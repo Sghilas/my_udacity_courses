@@ -36,13 +36,16 @@ test_dataset, test_labels = reformat(test_dataset, test_labels)
 print('Training set', train_dataset.shape, train_labels.shape)
 print('Validation set', valid_dataset.shape, valid_labels.shape)
 
-def forward(dataset,weights,biases):
-	layer_1 = tf.nn.relu(tf.add(tf.matmul(dataset, weights['h1']),biases['b1'])) #Hidden layer with RELU activation
-	layer_2 = tf.nn.relu(tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])) #Hidden layer with RELU activation
-	layer_3 = tf.nn.relu(tf.add(tf.matmul(layer_2, weights['h3']), biases['b3'])) #Hidden layer with RELU activation
+def forward(_input,weights,biases,drop_out=False):
+	layer_1=tf.nn.relu(tf.add(tf.matmul(_input, weights['h1']),biases['b1']))
+	if drop_out:
+		layer_1 =tf.nn.dropout(layer_1 ,0.5)*2 #Hidden layer with RELU activation
+		layer_2 =tf.nn.dropout( tf.nn.relu(tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])),0.5)*2 #Hidden layer with RELU activation
+		layer_3 =tf.nn.dropout( tf.nn.relu(tf.add(tf.matmul(layer_2, weights['h3']), biases['b3'])),0.5)*2
+	else:	
+		layer_2 =tf.nn.relu(tf.add(tf.matmul(layer_1, weights['h2']), biases['b2']))
+		layer_3 =tf.nn.relu(tf.add(tf.matmul(layer_2, weights['h3']), biases['b3']))
 	return tf.matmul(layer_3, weights['out']) + biases['out']
-
-
 
 batch_size = 128
 num_nodes=1024
@@ -77,24 +80,25 @@ with graph.as_default():
 	}
 
 
-  logits=forward(tf_train_dataset,weights,biases)
+  logits=forward(tf_train_dataset,weights,biases,drop_out=True)
   # # # Training computation.
   loss = tf.reduce_mean(
     tf.nn.softmax_cross_entropy_with_logits(logits, tf_train_labels))
 
-
+  # l2 regularization 
   regulatization_l2=loss+beta*(tf.nn.l2_loss(weights['out'])+tf.nn.l2_loss(weights['h1'])+tf.nn.l2_loss(weights['h2'])+tf.nn.l2_loss(weights['h3']))
 
-
+  global_step=tf.Variable(0)
+  learning_rate=tf.train.exponential_decay(0.00001,global_step,3001,0.96)
   # Optimizer.
-  optimizer = tf.train.GradientDescentOptimizer(0.0002).minimize(regulatization_l2)
+  optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(regulatization_l2)
   # Predictions for the training, validation, and test data.
   train_prediction = tf.nn.softmax(logits)
-  valid_prediction = tf.nn.softmax(forward(tf_valid_dataset, weights,biases))
-  test_prediction = tf.nn.softmax(forward(tf_test_dataset,weights,biases))
+  valid_prediction = tf.nn.softmax(forward(tf_valid_dataset, weights,biases,drop_out=False))
+  test_prediction = tf.nn.softmax(forward(tf_test_dataset,weights,biases,drop_out=False))
 
 num_steps = 3001
-
+print(train_labels.shape[0])
 def accuracy(predictions, labels):
   return (100.0 * np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1))
           / predictions.shape[0])
@@ -118,7 +122,6 @@ with tf.Session(graph=graph) as session:
     if (step % 500 == 0):
       print("Minibatch loss at step %d: %f" % (step, l))
       print("Minibatch accuracy: %.1f%%" % accuracy(predictions, batch_labels))
-      print("Validation accuracy: %.1f%%" % accuracy(
-        valid_prediction.eval(), valid_labels))
+      print("Validation accuracy: %.1f%%" % accuracy(valid_prediction.eval(), valid_labels))
   print("Test accuracy: %.1f%%" % accuracy(test_prediction.eval(), test_labels))
 
