@@ -1,4 +1,4 @@
-from __future__ import print_function
+from __future__ import pyplotrint_function
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
